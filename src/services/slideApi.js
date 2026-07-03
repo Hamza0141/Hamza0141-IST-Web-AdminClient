@@ -1,20 +1,29 @@
 import request from "./api";
 
-export const getSlides = () => request("/slides");
+export function getSlides() {
+  return request("/slides");
+}
 
-export const createSlide = (payload) =>
-  request("/slides/create", {
+export function getSlideById(id) {
+  return request(`/slides/${id}`);
+}
+
+export function createSlide(payload) {
+  return request("/slides", {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
 
-export const updateSlide = (id, payload) =>
-  request(`/slides/${id}`, {
-    method: "PATCH",
+export function updateSlide(id, payload) {
+  return request(`/slides/${id}`, {
+    method: "PUT",
     body: JSON.stringify(payload),
   });
+}
 
-export const deleteSlide = (id) =>
-  request(`/slides/${id}`, {
+export function deleteSlide(id) {
+  return request(`/slides/${id}`, {
     method: "DELETE",
   });
+}

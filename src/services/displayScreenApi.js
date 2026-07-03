@@ -1,20 +1,30 @@
 import request from "./api";
 
-export const getDisplayScreens = () => request("/display-screens");
+export function getDisplayScreens({ activeOnly = false } = {}) {
+  const query = activeOnly ? "?activeOnly=true" : "";
+  return request(`/display-screens${query}`);
+}
 
-export const createDisplayScreen = (payload) =>
-  request("/display-screens/create", {
+export function getDisplayScreenById(id) {
+  return request(`/display-screens/${id}`);
+}
+
+export function createDisplayScreen(payload) {
+  return request("/display-screens", {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
 
-export const updateDisplayScreen = (id, payload) =>
-  request(`/display-screens/${id}`, {
-    method: "PATCH",
+export function updateDisplayScreen(id, payload) {
+  return request(`/display-screens/${id}`, {
+    method: "PUT",
     body: JSON.stringify(payload),
   });
+}
 
-export const deleteDisplayScreen = (id) =>
-  request(`/display-screens/${id}`, {
+export function deleteDisplayScreen(id) {
+  return request(`/display-screens/${id}`, {
     method: "DELETE",
   });
+}

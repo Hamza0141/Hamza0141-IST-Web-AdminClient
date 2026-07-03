@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from "react";
 import PageShell from "../components/PageShell";
-import { createSlide, deleteSlide, getSlides, updateSlide } from "../services/slideApi";
+
+import {
+  createSlide,
+  deleteSlide,
+  getSlides,
+  updateSlide,
+} from "../services/slideApi";
+
+import { getDisplayScreens } from "../services/displayScreenApi";
 
 const emptyForm = {
   title: "",
@@ -11,10 +19,12 @@ const emptyForm = {
   start_at: "",
   end_at: "",
   is_active: 1,
+  screen_ids: [],
 };
 
 export default function SlidesPage() {
   const [slides, setSlides] = useState([]);
+  const [screens, setScreens] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [message, setMessage] = useState("");
@@ -24,16 +34,44 @@ export default function SlidesPage() {
     setSlides(data.slides || []);
   }
 
+  async function loadScreens() {
+    const data = await getDisplayScreens({ activeOnly: true });
+    setScreens(data.display_screens || []);
+  }
+
+  async function loadPageData() {
+    await Promise.all([loadSlides(), loadScreens()]);
+  }
+
   useEffect(() => {
-    loadSlides().catch((err) => setMessage(err.message));
+    loadPageData().catch((err) => setMessage(err.message));
   }, []);
 
   function handleChange(e) {
     const { name, value, type, checked } = e.target;
+
     setForm((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? Number(checked) : value,
     }));
+  }
+
+  function handleScreenToggle(screenId, checked) {
+    setForm((prev) => {
+      const currentIds = prev.screen_ids || [];
+
+      if (checked) {
+        return {
+          ...prev,
+          screen_ids: [...new Set([...currentIds, screenId])],
+        };
+      }
+
+      return {
+        ...prev,
+        screen_ids: currentIds.filter((id) => id !== screenId),
+      };
+    });
   }
 
   function toPayload(values) {
@@ -43,9 +81,12 @@ export default function SlidesPage() {
       image_url: values.image_url || null,
       slide_order: Number(values.slide_order || 1),
       duration_seconds: Number(values.duration_seconds || 10),
-      start_at: values.start_at ? values.start_at.replace("T", " ") + ":00" : null,
+      start_at: values.start_at
+        ? values.start_at.replace("T", " ") + ":00"
+        : null,
       end_at: values.end_at ? values.end_at.replace("T", " ") + ":00" : null,
       is_active: Number(values.is_active),
+      screen_ids: (values.screen_ids || []).map((id) => Number(id)),
     };
   }
 
@@ -54,6 +95,11 @@ export default function SlidesPage() {
 
     try {
       setMessage("");
+
+      if (!form.screen_ids.length) {
+        setMessage("Select at least one TV/display for this slide.");
+        return;
+      }
 
       if (editingId) {
         await updateSlide(editingId, toPayload(form));
@@ -73,6 +119,11 @@ export default function SlidesPage() {
 
   function handleEdit(item) {
     setEditingId(item.id);
+
+    const assignedScreenIds =
+      item.screen_ids ||
+      (item.screens || []).map((screen) => Number(screen.id));
+
     setForm({
       title: item.title || "",
       message: item.message || "",
@@ -82,6 +133,7 @@ export default function SlidesPage() {
       start_at: item.start_at ? item.start_at.slice(0, 16) : "",
       end_at: item.end_at ? item.end_at.slice(0, 16) : "",
       is_active: item.is_active ? 1 : 0,
+      screen_ids: assignedScreenIds.map((id) => Number(id)),
     });
   }
 
@@ -89,7 +141,9 @@ export default function SlidesPage() {
     if (!confirm("Delete this slide?")) return;
 
     try {
+      setMessage("");
       await deleteSlide(id);
+      setMessage("Slide deleted.");
       await loadSlides();
     } catch (error) {
       setMessage(error.message);
@@ -101,10 +155,26 @@ export default function SlidesPage() {
     setForm(emptyForm);
   }
 
+  function getAssignedScreensText(slide) {
+    const assigned = slide.screens || [];
+
+    if (!assigned.length) {
+      return "No TVs assigned";
+    }
+
+    return assigned
+      .map((screen) =>
+        screen.location_name
+          ? `${screen.screen_name} (${screen.location_name})`
+          : screen.screen_name
+      )
+      .join(", ");
+  }
+
   return (
     <PageShell
       title="Slides"
-      description="Manage display slides, duration, and ordering for mosque TVs."
+      description="Manage display slides, duration, ordering, and which TVs should show each slide."
     >
       {message ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
@@ -187,6 +257,50 @@ export default function SlidesPage() {
               />
             </div>
 
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-3 text-sm font-semibold text-slate-800">
+                Show this slide on
+              </div>
+
+              {screens.length ? (
+                <div className="space-y-2">
+                  {screens.map((screen) => (
+                    <label
+                      key={screen.id}
+                      className="flex items-center gap-3 rounded-xl bg-white px-3 py-2 text-sm text-slate-700"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={(form.screen_ids || []).includes(screen.id)}
+                        onChange={(e) =>
+                          handleScreenToggle(screen.id, e.target.checked)
+                        }
+                        className="h-5 w-5 accent-emerald-600"
+                      />
+
+                      <span>
+                        <span className="font-medium">
+                          {screen.screen_name}
+                        </span>
+
+                        <span className="text-slate-500">
+                          {" "}
+                          — {screen.screen_code}
+                          {screen.location_name
+                            ? ` • ${screen.location_name}`
+                            : ""}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-slate-500">
+                  No active TVs found. Create an active display screen first.
+                </div>
+              )}
+            </div>
+
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input
                 name="is_active"
@@ -234,7 +348,9 @@ export default function SlidesPage() {
                 )}
               </div>
 
-              <div className="font-semibold text-slate-900">{slide.title}</div>
+              <div className="font-semibold text-slate-900">
+                {slide.title}
+              </div>
 
               {slide.message ? (
                 <p className="mt-1 line-clamp-2 text-sm text-slate-500">
@@ -245,6 +361,11 @@ export default function SlidesPage() {
               <div className="mt-2 text-sm text-slate-500">
                 Order {slide.slide_order} • {slide.duration_seconds}s •{" "}
                 {slide.is_active ? "Active" : "Inactive"}
+              </div>
+
+              <div className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                <span className="font-semibold text-slate-700">TVs: </span>
+                {getAssignedScreensText(slide)}
               </div>
 
               <div className="mt-4 flex gap-2">
@@ -264,6 +385,12 @@ export default function SlidesPage() {
               </div>
             </div>
           ))}
+
+          {!slides.length ? (
+            <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm md:col-span-2">
+              No slides found.
+            </div>
+          ) : null}
         </div>
       </div>
     </PageShell>

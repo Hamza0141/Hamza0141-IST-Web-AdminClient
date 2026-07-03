@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import PageShell from "../components/PageShell";
+
 import {
   createDisplayScreen,
   deleteDisplayScreen,
@@ -7,10 +8,12 @@ import {
   updateDisplayScreen,
 } from "../services/displayScreenApi";
 
+import { getDisplayLocations } from "../services/displayLocationApi";
+
 const emptyForm = {
   screen_name: "",
   screen_code: "",
-  location_name: "",
+  location_id: "",
   device_token: "",
   is_active: 1,
 };
@@ -25,6 +28,7 @@ function slugify(value) {
 
 export default function DisplayScreensPage() {
   const [screens, setScreens] = useState([]);
+  const [locations, setLocations] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [message, setMessage] = useState("");
@@ -34,8 +38,17 @@ export default function DisplayScreensPage() {
     setScreens(data.display_screens || []);
   }
 
+  async function loadLocations() {
+    const data = await getDisplayLocations({ activeOnly: true });
+    setLocations(data.display_locations || []);
+  }
+
+  async function loadPageData() {
+    await Promise.all([loadScreens(), loadLocations()]);
+  }
+
   useEffect(() => {
-    loadScreens().catch((err) => setMessage(err.message));
+    loadPageData().catch((err) => setMessage(err.message));
   }, []);
 
   function handleChange(e) {
@@ -59,7 +72,7 @@ export default function DisplayScreensPage() {
     return {
       screen_name: values.screen_name,
       screen_code: values.screen_code,
-      location_name: values.location_name || null,
+      location_id: values.location_id ? Number(values.location_id) : null,
       device_token: values.device_token || null,
       is_active: Number(values.is_active),
     };
@@ -89,10 +102,11 @@ export default function DisplayScreensPage() {
 
   function handleEdit(item) {
     setEditingId(item.id);
+
     setForm({
       screen_name: item.screen_name || "",
       screen_code: item.screen_code || "",
-      location_name: item.location_name || "",
+      location_id: item.location_id ? String(item.location_id) : "",
       device_token: item.device_token || "",
       is_active: item.is_active ? 1 : 0,
     });
@@ -102,7 +116,9 @@ export default function DisplayScreensPage() {
     if (!confirm("Delete this display screen?")) return;
 
     try {
+      setMessage("");
       await deleteDisplayScreen(id);
+      setMessage("Display screen deleted.");
       await loadScreens();
     } catch (error) {
       setMessage(error.message);
@@ -154,17 +170,24 @@ export default function DisplayScreensPage() {
               value={form.screen_code}
               onChange={handleChange}
               className="w-full rounded-2xl border border-slate-300 px-4 py-3"
-              placeholder="lobby-tv"
+              placeholder="LOBBY-TV"
               required
             />
 
-            <input
-              name="location_name"
-              value={form.location_name}
+            <select
+              name="location_id"
+              value={form.location_id}
               onChange={handleChange}
               className="w-full rounded-2xl border border-slate-300 px-4 py-3"
-              placeholder="Front Lobby"
-            />
+            >
+              <option value="">Select display location</option>
+
+              {locations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.location_name}
+                </option>
+              ))}
+            </select>
 
             <input
               name="device_token"
@@ -210,6 +233,7 @@ export default function DisplayScreensPage() {
                 <th className="px-4 py-3">Screen Name</th>
                 <th className="px-4 py-3">Screen Code</th>
                 <th className="px-4 py-3">Location</th>
+                <th className="px-4 py-3">Last Seen</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
@@ -231,6 +255,12 @@ export default function DisplayScreensPage() {
 
                   <td className="px-4 py-4 text-slate-600">
                     {screen.location_name || "--"}
+                  </td>
+
+                  <td className="px-4 py-4 text-slate-500">
+                    {screen.last_seen_at
+                      ? new Date(screen.last_seen_at).toLocaleString()
+                      : "--"}
                   </td>
 
                   <td className="px-4 py-4">
@@ -274,7 +304,10 @@ export default function DisplayScreensPage() {
 
               {!screens.length ? (
                 <tr>
-                  <td colSpan="5" className="px-4 py-10 text-center text-slate-500">
+                  <td
+                    colSpan="6"
+                    className="px-4 py-10 text-center text-slate-500"
+                  >
                     No display screens found.
                   </td>
                 </tr>
